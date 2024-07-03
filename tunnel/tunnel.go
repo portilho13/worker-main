@@ -1,11 +1,17 @@
 package tunnel
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 	"sync"
 )
+
+type Packet struct {
+	dataLen uint32
+	data    string
+}
 
 var (
 	servers_map = make(map[string]*net.Conn)
@@ -41,14 +47,14 @@ func Create_server(ip string) error {
 func handle_client(conn net.Conn) error {
 	defer conn.Close()
 
-	buffer := make([]byte, 10)
+	buffer := make([]byte, 4)
 
 	_, err := conn.Read(buffer)
 	if err != nil {
 		return err
 	}
 
-	data_size := int(buffer[0])
+	data_size := binary.BigEndian.Uint32(buffer)
 
 	buffer = make([]byte, data_size)
 
@@ -57,7 +63,19 @@ func handle_client(conn net.Conn) error {
 		return err
 	}
 
-	fmt.Println(string(buffer))
+	p := Packet{
+		data_size,
+		string(buffer),
+	}
+
+	for ip, conn := range servers_map {
+		fmt.Println("Sending data to ip", ip)
+		err = send_data(*conn, p)
+		if err != nil {
+			return err
+		}
+
+	}
 
 	return nil
 }
@@ -65,11 +83,6 @@ func handle_client(conn net.Conn) error {
 func Connect_to_clients(servers_ip []string) error {
 	for _, ip := range servers_ip {
 		if err := connect_to_client(ip); err != nil {
-			return err
-		}
-
-		err := handle_conn(servers_map[ip])
-		if err != nil {
 			return err
 		}
 	}
@@ -91,13 +104,24 @@ func connect_to_client(ip string) error {
 	return nil
 }
 
-func handle_conn(conn *net.Conn) error {
+func send_data(conn net.Conn, p Packet) error {
+	// Convert data length to bytes
+	dataLenBuff := make([]byte, 4)
+	binary.BigEndian.PutUint32(dataLenBuff, p.dataLen)
+	fmt.Println(dataLenBuff)
 
-	byte_msg := []byte("ola")
-
-	_, err := (*conn).Write(byte_msg)
+	// Write the data length
+	_, err := conn.Write(dataLenBuff)
 	if err != nil {
 		return err
 	}
+
+	// Write the data
+	_, err = conn.Write([]byte(p.data))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Sent data successfully")
 	return nil
 }
