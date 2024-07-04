@@ -11,7 +11,6 @@ const SERVER_TCP string = "127.0.0.1:1234"
 
 var SERVERS_TCP_IPS = []string{
 	"127.0.0.1:2005",
-	"127.0.0.1:1986",
 }
 
 func main() {

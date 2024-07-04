@@ -63,6 +63,8 @@ func handle_client(conn net.Conn) error {
 		return err
 	}
 
+	fmt.Println(buffer)
+
 	p := Packet{
 		data_size,
 		string(buffer),
