@@ -3,29 +3,28 @@ package tunnel
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sync"
 )
 
 type Packet struct {
-	dataLen uint32
-	data    string
+	DataLen uint32
+	Data    []byte
 }
 
 var (
-	servers_map = make(map[string]*net.Conn)
-	mapMutex    sync.Mutex
+	ServersMap = make(map[string]net.Conn)
+	MapMutex   sync.Mutex
 )
 
-func Create_server(ip string) error {
+func CreateServer(ip string) error {
 	listener, err := net.Listen("tcp", ip)
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("Started listenning on: ", ip)
-
+	fmt.Println("Started listening on: ", ip)
 	defer listener.Close()
 
 	for {
@@ -33,97 +32,65 @@ func Create_server(ip string) error {
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("Recived conn from ", conn.RemoteAddr())
-
-		go func(conn net.Conn) {
-			if err = handle_client(conn); err != nil {
-				log.Fatal(err)
-			}
-		}(conn)
+		fmt.Println("Received conn from ", conn.RemoteAddr())
+		go HandleClient(conn)
 	}
 }
 
-func handle_client(conn net.Conn) error {
+func HandleClient(conn net.Conn) {
 	defer conn.Close()
 
-	buffer := make([]byte, 4)
-
-	_, err := conn.Read(buffer)
+	var dataLen uint32
+	err := binary.Read(conn, binary.BigEndian, &dataLen)
 	if err != nil {
-		return err
+		log.Println("Failed to read data length:", err)
+		return
 	}
 
-	data_size := binary.BigEndian.Uint32(buffer)
-
-	buffer = make([]byte, data_size)
-
-	_, err = conn.Read(buffer)
+	buffer := make([]byte, dataLen)
+	_, err = io.ReadFull(conn, buffer)
 	if err != nil {
-		return err
+		log.Println("Failed to read data:", err)
+		return
 	}
 
-	fmt.Println(buffer)
-
-	p := Packet{
-		data_size,
-		string(buffer),
-	}
-
-	for ip, conn := range servers_map {
+	packet := Packet{DataLen: dataLen, Data: buffer}
+	MapMutex.Lock()
+	defer MapMutex.Unlock()
+	for ip, conn := range ServersMap {
 		fmt.Println("Sending data to ip", ip)
-		err = send_data(*conn, p)
-		if err != nil {
-			return err
+		if err := SendData(conn, packet); err != nil {
+			log.Println("Failed to send data:", err)
+			return
 		}
-
 	}
-
-	return nil
 }
 
-func Connect_to_clients(servers_ip []string) error {
-	for _, ip := range servers_ip {
-		if err := connect_to_client(ip); err != nil {
+func ConnectToClients(serversIP []string) error {
+	for _, ip := range serversIP {
+		if err := ConnectToClient(ip); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func connect_to_client(ip string) error {
+func ConnectToClient(ip string) error {
 	conn, err := net.Dial("tcp", ip)
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("Sucessfully connected to ip: ", ip)
-
-	mapMutex.Lock()
-	servers_map[ip] = &conn
-	mapMutex.Unlock()
-
+	fmt.Println("Successfully connected to ip: ", ip)
+	MapMutex.Lock()
+	ServersMap[ip] = conn
+	MapMutex.Unlock()
 	return nil
 }
 
-func send_data(conn net.Conn, p Packet) error {
-	// Convert data length to bytes
-	dataLenBuff := make([]byte, 4)
-	binary.BigEndian.PutUint32(dataLenBuff, p.dataLen)
-	fmt.Println(dataLenBuff)
-
-	// Write the data length
-	_, err := conn.Write(dataLenBuff)
-	if err != nil {
+func SendData(conn net.Conn, packet Packet) error {
+	if err := binary.Write(conn, binary.BigEndian, packet.DataLen); err != nil {
 		return err
 	}
-
-	// Write the data
-	_, err = conn.Write([]byte(p.data))
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Sent data successfully")
-	return nil
+	_, err := conn.Write(packet.Data)
+	return err
 }

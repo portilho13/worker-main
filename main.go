@@ -21,7 +21,7 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-		err := tunnel.Create_server(SERVER_TCP)
+		err := tunnel.CreateServer(SERVER_TCP)
 		if err != nil {
 			log.Fatal(err)
 			return
@@ -30,7 +30,7 @@ func main() {
 
 	go func(SERVERS_TCP_IPS []string) {
 		defer wg.Done()
-		err := tunnel.Connect_to_clients(SERVERS_TCP_IPS)
+		err := tunnel.ConnectToClients(SERVERS_TCP_IPS)
 		if err != nil {
 			log.Fatal(err)
 			return
